@@ -27,7 +27,7 @@
 
     <groupId>io.openmessaging.storage</groupId>
     <artifactId>dledger</artifactId>
-    <version>0.2.7-SNAPSHOT</version>
+    <version>0.2.6-mdh0.2.7-RELEASE</version>
 
     <name>openmessaging-dledger</name>
 
@@ -263,14 +263,20 @@
     </scm>
 
     <distributionManagement>
-        <snapshotRepository>
-            <id>sonatype-nexus-snapshots</id>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-        </snapshotRepository>
         <repository>
-            <id>sonatype-nexus-staging</id>
-            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+            <id>central</id>
+            <name>maven-release-virtual</name>
+            <url>
+                https://pkgs.d.xiaomi.net/artifactory/maven-release-virtual
+            </url>
         </repository>
+        <snapshotRepository>
+            <id>snapshots</id>
+            <name>maven-snapshot-virtual</name>
+            <url>
+                https://pkgs.d.xiaomi.net/artifactory/maven-snapshot-virtual
+            </url>
+        </snapshotRepository>
     </distributionManagement>
 
 </project>
