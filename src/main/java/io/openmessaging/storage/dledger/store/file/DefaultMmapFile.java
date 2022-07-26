@@ -52,6 +52,8 @@ public class DefaultMmapFile extends ReferenceResource implements MmapFile {
     private volatile long storeTimestamp = 0;
     private boolean firstCreateInQueue = false;
 
+    protected ByteBuffer writeBuffer = null;
+
     public DefaultMmapFile(final String fileName, final int fileSize) throws IOException {
         this.fileName = fileName;
         this.fileSize = fileSize;

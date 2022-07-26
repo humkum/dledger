@@ -149,6 +149,7 @@ public class DLedgerLeaderElector {
     }
 
     public void changeRoleToLeader(long term) {
+        dLedgerConfig.setdLedgerTransientStorePoolEnable(true);
         synchronized (memberState) {
             if (memberState.currTerm() == term) {
                 memberState.changeToLeader(term);
@@ -181,6 +182,7 @@ public class DLedgerLeaderElector {
     }
 
     public void changeRoleToFollower(long term, String leaderId) {
+        dLedgerConfig.setdLedgerTransientStorePoolEnable(false);
         logger.info("[{}][ChangeRoleToFollower] from term: {} leaderId: {} and currTerm: {}", memberState.getSelfId(), term, leaderId, memberState.currTerm());
         lastParseResult = VoteResponse.ParseResult.WAIT_TO_REVOTE;
         memberState.changeToFollower(term, leaderId);
