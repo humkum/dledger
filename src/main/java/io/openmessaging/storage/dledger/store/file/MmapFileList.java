@@ -16,6 +16,7 @@
 
 package io.openmessaging.storage.dledger.store.file;
 
+import io.openmessaging.storage.dledger.MemberState;
 import io.openmessaging.storage.dledger.utils.DLedgerUtils;
 import java.io.File;
 import java.io.IOException;
@@ -46,9 +47,16 @@ public class MmapFileList {
 
     private volatile long storeTimestamp = 0;
 
+    private DLedgerMmapFileStore mmapFileStore;
+
     public MmapFileList(final String storePath, int mappedFileSize) {
+        this(storePath, mappedFileSize, null);
+    }
+
+    public MmapFileList(final String storePath, int mappedFileSize, DLedgerMmapFileStore mmapFileStore) {
         this.storePath = storePath;
         this.mappedFileSize = mappedFileSize;
+        this.mmapFileStore = mmapFileStore;
     }
 
     public boolean checkSelf() {
@@ -339,7 +347,18 @@ public class MmapFileList {
     protected MmapFile doCreateMappedFile(String nextFilePath) {
         MmapFile mappedFile = null;
         try {
-            mappedFile = new DefaultMmapFile(nextFilePath, this.mappedFileSize);
+            if (mmapFileStore != null && mmapFileStore.getMemberState().getRole() == MemberState.Role.LEADER) {
+                logger.info("role is leader, create mmapFile from transientStorePool");
+                mappedFile = new DefaultMmapFile(nextFilePath, this.mappedFileSize, mmapFileStore.getTransientStorePool());
+            } else {
+                if (mmapFileStore != null) {
+                    logger.info("create mappedFile from old version, role {}", mmapFileStore.getMemberState().getRole());
+                } else {
+                    logger.info("create mappedFile from old version, mmapFileStore = null");
+                }
+                mappedFile = new DefaultMmapFile(nextFilePath, this.mappedFileSize);
+            }
+
         } catch (IOException e) {
             logger.error("create mappedFile exception", e);
         }

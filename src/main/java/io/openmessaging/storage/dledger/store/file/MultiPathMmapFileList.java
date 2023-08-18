@@ -34,8 +34,9 @@ public class MultiPathMmapFileList extends MmapFileList {
     private final Supplier<Set<String>> fullStorePathsSupplier;
     private final DLedgerConfig config;
 
-    public MultiPathMmapFileList(DLedgerConfig config, int mappedFileSize, Supplier<Set<String>> fullStorePathsSupplier) {
-        super(config.getDataStorePath(), mappedFileSize);
+    public MultiPathMmapFileList(DLedgerConfig config, int mappedFileSize,
+        Supplier<Set<String>> fullStorePathsSupplier, DLedgerMmapFileStore mmapFileStore) {
+        super(config.getDataStorePath(), mappedFileSize, mmapFileStore);
         this.config = config;
         this.fullStorePathsSupplier = fullStorePathsSupplier;
     }

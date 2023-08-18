@@ -94,6 +94,10 @@ public class DLedgerConfig {
     private long leadershipTransferWaitTimeout = 1000;
 
     private boolean enableSleepForAckChecker = true;
+    private int transientStorePoolSize = 5;
+    private boolean transientStorePoolEnable = false;
+    private int commitCommitLogLeastPages = 4;
+    private int commitIntervalCommitLog = 200;
 
     public String getDefaultPath() {
         return storeBaseDir + File.separator + "dledger-" + selfId;
@@ -427,5 +431,38 @@ public class DLedgerConfig {
 
     public void setEnableSleepForAckChecker(boolean enableSleepForAckChecker) {
         this.enableSleepForAckChecker = enableSleepForAckChecker;
+    }
+
+    public int getTransientStorePoolSize() {
+        return transientStorePoolSize;
+    }
+
+    public void setTransientStorePoolSize(final int transientStorePoolSize) {
+        this.transientStorePoolSize = transientStorePoolSize;
+    }
+
+    public boolean isTransientStorePoolEnable() {
+        return transientStorePoolEnable;
+    }
+
+    public void setTransientStorePoolEnable(final boolean transientStorePoolEnable) {
+        this.transientStorePoolEnable = transientStorePoolEnable;
+    }
+
+
+    public int getCommitCommitLogLeastPages() {
+        return commitCommitLogLeastPages;
+    }
+
+    public void setCommitCommitLogLeastPages(int commitCommitLogLeastPages) {
+        this.commitCommitLogLeastPages = commitCommitLogLeastPages;
+    }
+
+    public int getCommitIntervalCommitLog() {
+        return commitIntervalCommitLog;
+    }
+
+    public void setCommitIntervalCommitLog(int commitIntervalCommitLog) {
+        this.commitIntervalCommitLog = commitIntervalCommitLog;
     }
 }

@@ -62,6 +62,7 @@ public class DLedgerMmapFileStore extends DLedgerStore {
     private ThreadLocal<ByteBuffer> localEntryBuffer;
     private ThreadLocal<ByteBuffer> localIndexBuffer;
     private FlushDataService flushDataService;
+    private CommitDataService commitDataService;
     private CleanSpaceService cleanSpaceService;
     private volatile boolean isDiskFull = false;
 
@@ -72,20 +73,24 @@ public class DLedgerMmapFileStore extends DLedgerStore {
 
     private volatile Set<String> fullStorePaths = Collections.emptySet();
 
+    private TransientStorePool transientStorePool;
+
     public DLedgerMmapFileStore(DLedgerConfig dLedgerConfig, MemberState memberState) {
         this.dLedgerConfig = dLedgerConfig;
         this.memberState = memberState;
         if (dLedgerConfig.getDataStorePath().contains(DLedgerConfig.MULTI_PATH_SPLITTER)) {
             this.dataFileList = new MultiPathMmapFileList(dLedgerConfig, dLedgerConfig.getMappedFileSizeForEntryData(),
-                    this::getFullStorePaths);
+                    this::getFullStorePaths, this);
         } else {
-            this.dataFileList = new MmapFileList(dLedgerConfig.getDataStorePath(), dLedgerConfig.getMappedFileSizeForEntryData());
+            this.dataFileList = new MmapFileList(dLedgerConfig.getDataStorePath(), dLedgerConfig.getMappedFileSizeForEntryData(), this);
         }
         this.indexFileList = new MmapFileList(dLedgerConfig.getIndexStorePath(), dLedgerConfig.getMappedFileSizeForEntryIndex());
         localEntryBuffer = ThreadLocal.withInitial(() -> ByteBuffer.allocate(4 * 1024 * 1024));
         localIndexBuffer = ThreadLocal.withInitial(() -> ByteBuffer.allocate(INDEX_UNIT_SIZE * 2));
         flushDataService = new FlushDataService("DLedgerFlushDataService", logger);
+        commitDataService = new CommitDataService("DLedgerCommitDataService", logger);
         cleanSpaceService = new CleanSpaceService("DLedgerCleanSpaceService", logger);
+        this.transientStorePool = new TransientStorePool(dLedgerConfig);
     }
 
     @Override
@@ -93,6 +98,10 @@ public class DLedgerMmapFileStore extends DLedgerStore {
         load();
         recover();
         flushDataService.start();
+        if (dLedgerConfig.isTransientStorePoolEnable()) {
+            this.transientStorePool.init();
+            this.commitDataService.start();
+        }
         cleanSpaceService.start();
     }
 
@@ -103,6 +112,10 @@ public class DLedgerMmapFileStore extends DLedgerStore {
         persistCheckPoint();
         cleanSpaceService.shutdown();
         flushDataService.shutdown();
+        if (dLedgerConfig.isTransientStorePoolEnable()) {
+            commitDataService.shutdown();
+            this.transientStorePool.destroy();
+        }
     }
 
     public long getWritePos() {
@@ -115,6 +128,7 @@ public class DLedgerMmapFileStore extends DLedgerStore {
 
     @Override
     public void flush() {
+        this.dataFileList.commit(0);
         this.dataFileList.flush(0);
         this.indexFileList.flush(0);
     }
@@ -671,6 +685,42 @@ public class DLedgerMmapFileStore extends DLedgerStore {
         }
     }
 
+    class CommitDataService extends ShutdownAbleThread {
+        private long lastCommitTimestamp = 0;
+
+        public CommitDataService(String name, Logger logger) {
+            super(name, logger);
+        }
+
+        @Override
+        public void doWork() {
+            try {
+                int interval = dLedgerConfig.getCommitIntervalCommitLog();
+                int commitDataLeastPages = dLedgerConfig.getCommitCommitLogLeastPages();
+                if (DLedgerUtils.elapsed(lastCommitTimestamp) > dLedgerConfig.getCheckPointInterval()) {
+                    lastCommitTimestamp = System.currentTimeMillis();
+                    commitDataLeastPages = 0;
+                }
+                long start = System.currentTimeMillis();
+                boolean result = DLedgerMmapFileStore.this.dataFileList.commit(commitDataLeastPages);
+                long elapsed;
+                if ((elapsed = DLedgerUtils.elapsed(start)) > 500) {
+                    logger.info("commit data cost={} ms", elapsed);
+                }
+                if (!result) {
+                    this.lastCommitTimestamp = System.currentTimeMillis(); // result = false means some data committed.
+                    //now wake up flush thread.
+                    flushDataService.wakeup();
+                }
+
+                waitForRunning(interval);
+            } catch (Throwable t) {
+                logger.info("Error in {}", getName(), t);
+                DLedgerUtils.sleep(200);
+            }
+        }
+    }
+
     class CleanSpaceService extends ShutdownAbleThread {
 
         double storeBaseRatio = DLedgerUtils.getDiskPartitionSpaceUsedPercent(dLedgerConfig.getStoreBaseDir());
@@ -763,5 +813,12 @@ public class DLedgerMmapFileStore extends DLedgerStore {
             DLedgerMmapFileStore.this.setFullStorePaths(fullStorePath);
             return minPhysicRatio;
         }
+    }
+    public int remainTransientStoreBufferNumbs() {
+        return this.transientStorePool.availableBufferNums();
+    }
+
+    public TransientStorePool getTransientStorePool() {
+        return transientStorePool;
     }
 }
