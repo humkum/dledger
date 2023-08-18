@@ -51,8 +51,26 @@ public class DefaultMmapFile extends ReferenceResource implements MmapFile {
     private MappedByteBuffer mappedByteBuffer;
     private volatile long storeTimestamp = 0;
     private boolean firstCreateInQueue = false;
+    private ByteBuffer writeBuffer;
+    private TransientStorePool transientStorePool;
 
     public DefaultMmapFile(final String fileName, final int fileSize) throws IOException {
+        init(fileName, fileSize);
+    }
+
+    public DefaultMmapFile(final String fileName, final int fileSize,
+        final TransientStorePool transientStorePool) throws IOException {
+        init(fileName, fileSize, transientStorePool);
+    }
+
+    public void init(final String fileName, final int fileSize,
+                     final TransientStorePool transientStorePool) throws IOException {
+        init(fileName, fileSize);
+        this.writeBuffer = transientStorePool.borrowBuffer();
+        this.transientStorePool = transientStorePool;
+    }
+
+    private void init(final String fileName, final int fileSize) throws IOException {
         this.fileName = fileName;
         this.fileSize = fileSize;
         this.file = new File(fileName);
@@ -181,7 +199,7 @@ public class DefaultMmapFile extends ReferenceResource implements MmapFile {
         int currentPos = this.wrotePosition.get();
 
         if ((currentPos + length) <= this.fileSize) {
-            ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
+            ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : mappedByteBuffer.slice();
             byteBuffer.position(currentPos);
             byteBuffer.put(data, offset, length);
             this.wrotePosition.addAndGet(length);
@@ -199,7 +217,12 @@ public class DefaultMmapFile extends ReferenceResource implements MmapFile {
             if (this.hold()) {
                 int value = getReadPosition();
                 try {
-                    this.mappedByteBuffer.force();
+                    //We only append data to fileChannel or mappedByteBuffer, never both.
+                    if (writeBuffer != null || this.fileChannel.position() != 0) {
+                        this.fileChannel.force(false);
+                    } else {
+                        this.mappedByteBuffer.force();
+                    }
                 } catch (Throwable e) {
                     logger.error("Error occurred when force data to disk.", e);
                 }
@@ -216,8 +239,59 @@ public class DefaultMmapFile extends ReferenceResource implements MmapFile {
 
     @Override
     public int commit(final int commitLeastPages) {
-        this.committedPosition.set(this.wrotePosition.get());
+        if (writeBuffer == null) {
+            this.committedPosition.set(this.wrotePosition.get());
+            return this.committedPosition.get();
+        }
+
+        if (this.isAbleToCommit(commitLeastPages)) {
+            if (this.hold()) {
+                commit0(commitLeastPages);
+                this.release();
+            } else {
+                logger.warn("in commit, hold failed, commit offset = " + this.committedPosition.get());
+            }
+        }
+
+        // All dirty data has been committed to FileChannel.
+        if (writeBuffer != null && this.transientStorePool != null && this.fileSize == this.committedPosition.get()) {
+            this.transientStorePool.returnBuffer(writeBuffer);
+            this.writeBuffer = null;
+        }
         return this.committedPosition.get();
+    }
+
+    protected void commit0(final int commitLeastPages) {
+        int writePos = this.wrotePosition.get();
+        int lastCommittedPosition = this.committedPosition.get();
+
+        if (writePos - lastCommittedPosition > commitLeastPages) {
+            try {
+                ByteBuffer byteBuffer = writeBuffer.slice();
+                byteBuffer.position(lastCommittedPosition);
+                byteBuffer.limit(writePos);
+                this.fileChannel.position(lastCommittedPosition);
+                this.fileChannel.write(byteBuffer);
+                this.committedPosition.set(writePos);
+            } catch (Throwable e) {
+                logger.error("Error occurred when commit data to FileChannel.", e);
+            }
+        }
+    }
+
+    protected boolean isAbleToCommit(final int commitLeastPages) {
+        int flush = this.committedPosition.get();
+        int write = this.wrotePosition.get();
+
+        if (this.isFull()) {
+            return true;
+        }
+
+        if (commitLeastPages > 0) {
+            return ((write / OS_PAGE_SIZE) - (flush / OS_PAGE_SIZE)) >= commitLeastPages;
+        }
+
+        return write > flush;
     }
 
     private boolean isAbleToFlush(final int flushLeastPages) {
@@ -264,7 +338,7 @@ public class DefaultMmapFile extends ReferenceResource implements MmapFile {
         if ((pos + size) <= readPosition) {
 
             if (this.hold()) {
-                ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
+                ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : mappedByteBuffer.slice();
                 byteBuffer.position(pos);
                 ByteBuffer byteBufferNew = byteBuffer.slice();
                 byteBufferNew.limit(size);
@@ -284,7 +358,7 @@ public class DefaultMmapFile extends ReferenceResource implements MmapFile {
         int readPosition = getReadPosition();
         if (pos < readPosition && pos >= 0) {
             if (this.hold()) {
-                ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
+                ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : mappedByteBuffer.slice();
                 byteBuffer.position(pos);
                 int size = readPosition - pos;
                 ByteBuffer byteBufferNew = byteBuffer.slice();

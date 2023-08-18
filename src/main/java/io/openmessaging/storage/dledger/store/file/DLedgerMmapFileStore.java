@@ -72,6 +72,8 @@ public class DLedgerMmapFileStore extends DLedgerStore {
 
     private volatile Set<String> fullStorePaths = Collections.emptySet();
 
+    private TransientStorePool transientStorePool;
+
     public DLedgerMmapFileStore(DLedgerConfig dLedgerConfig, MemberState memberState) {
         this.dLedgerConfig = dLedgerConfig;
         this.memberState = memberState;
@@ -79,13 +81,17 @@ public class DLedgerMmapFileStore extends DLedgerStore {
             this.dataFileList = new MultiPathMmapFileList(dLedgerConfig, dLedgerConfig.getMappedFileSizeForEntryData(),
                     this::getFullStorePaths);
         } else {
-            this.dataFileList = new MmapFileList(dLedgerConfig.getDataStorePath(), dLedgerConfig.getMappedFileSizeForEntryData());
+            this.dataFileList = new MmapFileList(dLedgerConfig.getDataStorePath(), dLedgerConfig.getMappedFileSizeForEntryData(), this);
         }
         this.indexFileList = new MmapFileList(dLedgerConfig.getIndexStorePath(), dLedgerConfig.getMappedFileSizeForEntryIndex());
         localEntryBuffer = ThreadLocal.withInitial(() -> ByteBuffer.allocate(4 * 1024 * 1024));
         localIndexBuffer = ThreadLocal.withInitial(() -> ByteBuffer.allocate(INDEX_UNIT_SIZE * 2));
         flushDataService = new FlushDataService("DLedgerFlushDataService", logger);
         cleanSpaceService = new CleanSpaceService("DLedgerCleanSpaceService", logger);
+        this.transientStorePool = new TransientStorePool(dLedgerConfig);
+        if (dLedgerConfig.isTransientStorePoolEnable()) {
+            this.transientStorePool.init();
+        }
     }
 
     @Override
@@ -103,6 +109,7 @@ public class DLedgerMmapFileStore extends DLedgerStore {
         persistCheckPoint();
         cleanSpaceService.shutdown();
         flushDataService.shutdown();
+        this.transientStorePool.destroy();
     }
 
     public long getWritePos() {
@@ -763,5 +770,12 @@ public class DLedgerMmapFileStore extends DLedgerStore {
             DLedgerMmapFileStore.this.setFullStorePaths(fullStorePath);
             return minPhysicRatio;
         }
+    }
+    public int remainTransientStoreBufferNumbs() {
+        return this.transientStorePool.availableBufferNums();
+    }
+
+    public TransientStorePool getTransientStorePool() {
+        return transientStorePool;
     }
 }

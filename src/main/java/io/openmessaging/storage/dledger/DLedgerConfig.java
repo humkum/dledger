@@ -93,6 +93,9 @@ public class DLedgerConfig {
 
     private long leadershipTransferWaitTimeout = 1000;
 
+    private int transientStorePoolSize = 5;
+    private boolean transientStorePoolEnable = false;
+
     public String getDefaultPath() {
         return storeBaseDir + File.separator + "dledger-" + selfId;
     }
@@ -417,5 +420,21 @@ public class DLedgerConfig {
 
     public void setReadOnlyDataStoreDirs(String readOnlyDataStoreDirs) {
         this.readOnlyDataStoreDirs = readOnlyDataStoreDirs;
+    }
+
+    public int getTransientStorePoolSize() {
+        return transientStorePoolSize;
+    }
+
+    public void setTransientStorePoolSize(final int transientStorePoolSize) {
+        this.transientStorePoolSize = transientStorePoolSize;
+    }
+
+    public boolean isTransientStorePoolEnable() {
+        return transientStorePoolEnable;
+    }
+
+    public void setTransientStorePoolEnable(final boolean transientStorePoolEnable) {
+        this.transientStorePoolEnable = transientStorePoolEnable;
     }
 }
