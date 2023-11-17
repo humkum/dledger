@@ -83,7 +83,7 @@ public class AppendAndPushTest extends ServerTestHarness {
             futures.add(future);
         }
         Assertions.assertEquals(9, dLedgerServer0.getdLedgerStore().getLedgerEndIndex());
-        Thread.sleep(dLedgerServer0.getdLedgerConfig().getMaxWaitAckTimeMs() + 100);
+        Thread.sleep(dLedgerServer0.getdLedgerConfig().getMaxWaitAckTimeMs() + 1000);
         for (int i = 0; i < futures.size(); i++) {
             CompletableFuture<AppendEntryResponse> future = futures.get(i);
             Assertions.assertTrue(future.isDone());

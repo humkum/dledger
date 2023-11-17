@@ -93,6 +93,8 @@ public class DLedgerConfig {
 
     private long leadershipTransferWaitTimeout = 1000;
 
+    private boolean enableSleepForAckChecker = true;
+
     public String getDefaultPath() {
         return storeBaseDir + File.separator + "dledger-" + selfId;
     }
@@ -417,5 +419,13 @@ public class DLedgerConfig {
 
     public void setReadOnlyDataStoreDirs(String readOnlyDataStoreDirs) {
         this.readOnlyDataStoreDirs = readOnlyDataStoreDirs;
+    }
+
+    public boolean isEnableSleepForAckChecker() {
+        return enableSleepForAckChecker;
+    }
+
+    public void setEnableSleepForAckChecker(boolean enableSleepForAckChecker) {
+        this.enableSleepForAckChecker = enableSleepForAckChecker;
     }
 }

@@ -43,6 +43,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -216,9 +217,14 @@ public class DLedgerEntryPusher {
      */
     public void checkResponseFuturesTimeout(final long beginIndex) {
         final long term = this.memberState.currTerm();
+        long maxIndex = this.dLedgerStore.getCommittedIndex() + dLedgerConfig.getMaxPendingRequestsNum() + 1;
+        if (maxIndex > this.memberState.getLedgerEndIndex()) {
+            maxIndex = this.memberState.getLedgerEndIndex() + 1;
+        }
+
         final Map<Long, TimeoutFuture<AppendEntryResponse>> responses = this.pendingAppendResponsesByTerm.get(term);
         if (responses != null) {
-            for (long i = beginIndex; i < Integer.MAX_VALUE; i++) {
+            for (long i = beginIndex; i < maxIndex; i++) {
                 TimeoutFuture<AppendEntryResponse> future = responses.get(i);
                 if (future == null) {
                     break;
@@ -244,7 +250,7 @@ public class DLedgerEntryPusher {
         final long currTerm = this.memberState.currTerm();
         final Map<Long, TimeoutFuture<AppendEntryResponse>> responses = this.pendingAppendResponsesByTerm.get(currTerm);
         for (Map.Entry<Long, TimeoutFuture<AppendEntryResponse>> futureEntry : responses.entrySet()) {
-            if (futureEntry.getKey() < endIndex) {
+            if (futureEntry.getKey() <= endIndex) {
                 AppendEntryResponse response = new AppendEntryResponse();
                 response.setGroup(memberState.getGroup());
                 response.setTerm(currTerm);
@@ -269,6 +275,8 @@ public class DLedgerEntryPusher {
 
         private long lastPrintWatermarkTimeMs = System.currentTimeMillis();
         private long lastCheckLeakTimeMs = System.currentTimeMillis();
+        private long lastCheckTimeoutTimeMs = System.currentTimeMillis();
+        private final LongAdder ackNum = new LongAdder();
         private long lastQuorumIndex = -1;
 
         public QuorumAckChecker(Logger logger) {
@@ -349,40 +357,40 @@ public class DLedgerEntryPusher {
                 } else {
                     dLedgerStore.updateCommittedIndex(currTerm, quorumIndex);
                     ConcurrentMap<Long, TimeoutFuture<AppendEntryResponse>> responses = pendingAppendResponsesByTerm.get(currTerm);
-                    boolean needCheck = false;
-                    int ackNum = 0;
-                    for (Long i = quorumIndex; i > lastQuorumIndex; i--) {
-                        try {
-                            CompletableFuture<AppendEntryResponse> future = responses.remove(i);
-                            if (future == null) {
-                                needCheck = true;
-                                break;
-                            } else if (!future.isDone()) {
-                                AppendEntryResponse response = new AppendEntryResponse();
-                                response.setGroup(memberState.getGroup());
-                                response.setTerm(currTerm);
-                                response.setIndex(i);
-                                response.setLeaderId(memberState.getSelfId());
-                                response.setPos(((AppendFuture) future).getPos());
-                                future.complete(response);
+                    responses.forEach((index, future) -> {
+                        if (index <= quorumIndex) {
+                            try {
+                                if (!future.isDone()) {
+                                    AppendEntryResponse response = new AppendEntryResponse();
+                                    response.setGroup(memberState.getGroup());
+                                    response.setTerm(currTerm);
+                                    response.setIndex(index);
+                                    response.setLeaderId(memberState.getSelfId());
+                                    response.setPos(((AppendFuture) future).getPos());
+                                    future.complete(response);
+                                }
+                                responses.remove(index);
+                                ackNum.increment();
+                            } catch (Throwable t) {
+                                logger.error("Error in ack to index={} term={}", index, currTerm, t);
                             }
-                            ackNum++;
-                        } catch (Throwable t) {
-                            logger.error("Error in ack to index={} term={}", i, currTerm, t);
+                        }
+                    });
+
+                    // Reduces cpu usage when server has low load
+                    // But relatively, the latency will increase about 1ms
+                    if (ackNum.longValue() == 0) {
+                        if (dLedgerConfig.isEnableSleepForAckChecker()) {
+                            waitForRunning(1);
                         }
                     }
 
-                    if (ackNum == 0) {
+                    if (DLedgerUtils.elapsed(lastCheckTimeoutTimeMs) > 1000) {
                         checkResponseFuturesTimeout(quorumIndex + 1);
-                        waitForRunning(1);
-                    }
-
-                    if (DLedgerUtils.elapsed(lastCheckLeakTimeMs) > 1000 || needCheck) {
-                        updatePeerWaterMark(currTerm, memberState.getSelfId(), dLedgerStore.getLedgerEndIndex());
-                        checkResponseFuturesElapsed(quorumIndex);
-                        lastCheckLeakTimeMs = System.currentTimeMillis();
+                        lastCheckTimeoutTimeMs = System.currentTimeMillis();
                     }
                 }
+                ackNum.reset();
                 lastQuorumIndex = quorumIndex;
             } catch (Throwable t) {
                 DLedgerEntryPusher.logger.error("Error in {}", getName(), t);
@@ -674,7 +682,7 @@ public class DLedgerEntryPusher {
                     lastCheckLeakTimeMs = System.currentTimeMillis();
                 }
                 if (batchPendingMap.size() >= maxPendingSize) {
-                    logger.warn("[Push-{}] batchPendingMap is full", peerId);
+                    logger.debug("[Push-{}] batchPendingMap is full", peerId);
                     doCheckBatchAppendResponse();
                     break;
                 }
