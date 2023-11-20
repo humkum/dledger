@@ -101,6 +101,11 @@ public class DLedgerLeaderElector {
 
     public CompletableFuture<HeartBeatResponse> handleHeartBeat(HeartBeatRequest request) throws Exception {
 
+        if (dLedgerConfig.isEnableDiskCheck() && DLedgerUtils.diskNotAvailable(dLedgerConfig)) {
+            logger.warn("[{}] [WRITE_DISK_ERROR] Disk is not writable, aborting election", memberState.getSelfId());
+            return CompletableFuture.completedFuture(new HeartBeatResponse().code(DLedgerResponseCode.DISK_ERROR.getCode()));
+        }
+
         if (!memberState.isPeerMember(request.getLeaderId())) {
             logger.warn("[BUG] [HandleHeartBeat] remoteId={} is an unknown member", request.getLeaderId());
             return CompletableFuture.completedFuture(new HeartBeatResponse().term(memberState.currTerm()).code(DLedgerResponseCode.UNKNOWN_MEMBER.getCode()));
@@ -341,6 +346,12 @@ public class DLedgerLeaderElector {
                 leaderId = memberState.getLeaderId();
                 lastSendHeartBeatTime = System.currentTimeMillis();
             }
+
+            if (dLedgerConfig.isEnableDiskCheck() && DLedgerUtils.diskNotAvailable(dLedgerConfig)) {
+                logger.warn("[{}] [WRITE_DISK_ERROR] Disk is not writable, stop send heartbeat, begin next vote", memberState.getSelfId());
+                return;
+            }
+
             sendHeartbeats(term, leaderId);
         }
     }

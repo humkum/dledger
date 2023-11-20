@@ -98,6 +98,7 @@ public class DLedgerConfig {
     private boolean transientStorePoolEnable = false;
     private int commitCommitLogLeastPages = 4;
     private int commitIntervalCommitLog = 200;
+    private boolean enableDiskCheck = false;
 
     public String getDefaultPath() {
         return storeBaseDir + File.separator + "dledger-" + selfId;
@@ -464,5 +465,13 @@ public class DLedgerConfig {
 
     public void setCommitIntervalCommitLog(int commitIntervalCommitLog) {
         this.commitIntervalCommitLog = commitIntervalCommitLog;
+    }
+
+    public boolean isEnableDiskCheck() {
+        return enableDiskCheck;
+    }
+
+    public void setEnableDiskCheck(boolean enableDiskCheck) {
+        this.enableDiskCheck = enableDiskCheck;
     }
 }
