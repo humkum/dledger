@@ -95,6 +95,8 @@ public class DLedgerConfig {
 
     private boolean enableSleepForAckChecker = true;
 
+    private boolean enableDiskCheck = false;
+
     public String getDefaultPath() {
         return storeBaseDir + File.separator + "dledger-" + selfId;
     }
@@ -427,5 +429,13 @@ public class DLedgerConfig {
 
     public void setEnableSleepForAckChecker(boolean enableSleepForAckChecker) {
         this.enableSleepForAckChecker = enableSleepForAckChecker;
+    }
+
+    public boolean isEnableDiskCheck() {
+        return enableDiskCheck;
+    }
+
+    public void setEnableDiskCheck(boolean enableDiskCheck) {
+        this.enableDiskCheck = enableDiskCheck;
     }
 }
