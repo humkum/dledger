@@ -27,7 +27,7 @@
 
     <groupId>io.openmessaging.storage</groupId>
     <artifactId>dledger</artifactId>
-    <version>0.2.6-mdh0.2.7.2-RELEASE</version>
+    <version>0.2.6-mdh-dev</version>
 
     <name>openmessaging-dledger</name>
 

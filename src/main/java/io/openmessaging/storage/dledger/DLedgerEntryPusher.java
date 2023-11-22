@@ -385,6 +385,11 @@ public class DLedgerEntryPusher {
                         }
                     }
 
+                    if (DLedgerUtils.elapsed(lastCheckLeakTimeMs) > 1000) {
+                        updatePeerWaterMark(currTerm, memberState.getSelfId(), dLedgerStore.getLedgerEndIndex());
+                        lastCheckLeakTimeMs = System.currentTimeMillis();
+                    }
+
                     if (DLedgerUtils.elapsed(lastCheckTimeoutTimeMs) > 1000) {
                         checkResponseFuturesTimeout(quorumIndex + 1);
                         lastCheckTimeoutTimeMs = System.currentTimeMillis();
