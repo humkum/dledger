@@ -32,22 +32,32 @@ public class TransientStorePool {
     private static final Logger log = LoggerFactory.getLogger(TransientStorePool.class);
 
     private final int poolSize;
-    private final int fileSize;
-    private final Deque<ByteBuffer> availableBuffers;
+    private final int dataFileSize;
+    private final int indexFileSize;
+    private final Deque<ByteBuffer> availableDataBuffers;
+    private final Deque<ByteBuffer> availableIndexBuffers;
     private final DLedgerConfig dLedgerConfig;
 
     public TransientStorePool(final DLedgerConfig dLedgerConfig) {
         this.dLedgerConfig = dLedgerConfig;
         this.poolSize = dLedgerConfig.getTransientStorePoolSize();
-        this.fileSize = dLedgerConfig.getMappedFileSizeForEntryData();
-        this.availableBuffers = new ConcurrentLinkedDeque<>();
+        this.dataFileSize = dLedgerConfig.getMappedFileSizeForEntryData();
+        this.indexFileSize = dLedgerConfig.getMappedFileSizeForEntryIndex();
+        this.availableDataBuffers = new ConcurrentLinkedDeque<>();
+        this.availableIndexBuffers = new ConcurrentLinkedDeque<>();
     }
 
     /**
      * It's a heavy init method.
      */
     public void init() {
-        log.info("init transient pool");
+        long startTime = System.currentTimeMillis();
+        initByteBuffers(availableDataBuffers, dataFileSize);
+        initByteBuffers(availableIndexBuffers, indexFileSize);
+        log.info("init direct byte buffer success, cost {}ms", System.currentTimeMillis() - startTime);
+    }
+
+    public void initByteBuffers(Deque<ByteBuffer> byteBuffers, int fileSize) {
         for (int i = 0; i < poolSize; i++) {
             ByteBuffer byteBuffer = ByteBuffer.allocateDirect(fileSize);
 
@@ -55,12 +65,17 @@ public class TransientStorePool {
             Pointer pointer = new Pointer(address);
             LibC.INSTANCE.mlock(pointer, new NativeLong(fileSize));
 
-            availableBuffers.offer(byteBuffer);
+            byteBuffers.offer(byteBuffer);
         }
     }
 
     public void destroy() {
-        for (ByteBuffer byteBuffer : availableBuffers) {
+        destroyDirectByteBuffer(availableDataBuffers, dataFileSize);
+        destroyDirectByteBuffer(availableIndexBuffers, indexFileSize);
+    }
+
+    public void destroyDirectByteBuffer(Deque<ByteBuffer> byteBuffers, int fileSize) {
+        for (ByteBuffer byteBuffer : byteBuffers) {
             final long address = ((DirectBuffer) byteBuffer).address();
             Pointer pointer = new Pointer(address);
             LibC.INSTANCE.munlock(pointer, new NativeLong(fileSize));
@@ -68,24 +83,50 @@ public class TransientStorePool {
     }
 
     public void returnBuffer(ByteBuffer byteBuffer) {
-        log.info("return a buffer to transient store, available buffer number: {}", availableBufferNums());
-        byteBuffer.position(0);
-        byteBuffer.limit(fileSize);
-        this.availableBuffers.offerFirst(byteBuffer);
+        int capacity = byteBuffer.capacity();
+        if (capacity == dataFileSize) {
+            log.info("return a data buffer to transient store, available data buffer number: {}", availableBufferNums());
+            byteBuffer.position(0);
+            byteBuffer.limit(dataFileSize);
+            this.availableDataBuffers.offerFirst(byteBuffer);
+        } else if (capacity == indexFileSize) {
+            log.info("return a index buffer to transient store, available index buffer number: {}", availableIndexBufferNums());
+            byteBuffer.position(0);
+            byteBuffer.limit(indexFileSize);
+            this.availableIndexBuffers.offerFirst(byteBuffer);
+        }
     }
 
-    public ByteBuffer borrowBuffer() {
-        ByteBuffer buffer = availableBuffers.pollFirst();
-        log.info("borrow a new buffer from transient store, available buffer number: {}", availableBufferNums());
-        if (availableBuffers.size() < poolSize * 0.4) {
-            log.warn("TransientStorePool only remain {} sheets.", availableBuffers.size());
+    public ByteBuffer borrowBuffer(int fileSize) {
+        ByteBuffer buffer = null;
+        if (fileSize == dataFileSize) {
+            buffer = availableDataBuffers.pollFirst();
+            log.info("borrow a new buffer from transient store, available data buffer number: {}", availableBufferNums());
+            if (availableDataBuffers.size() < poolSize * 0.4) {
+                log.warn("TransientStorePool only remain {} data sheets.", availableDataBuffers.size());
+            }
+        } else if (fileSize == indexFileSize) {
+            buffer = availableIndexBuffers.pollFirst();
+            log.info("borrow a new buffer from transient store, available index buffer number: {}", availableIndexBufferNums());
+            if (availableIndexBuffers.size() < poolSize * 0.4) {
+                log.warn("TransientStorePool only remain {} index sheets.", availableIndexBuffers.size());
+            }
+        } else {
+            log.warn("unknown error, fileSize illegal {}", fileSize);
         }
         return buffer;
     }
 
     public int availableBufferNums() {
         if (dLedgerConfig.isTransientStorePoolEnable()) {
-            return availableBuffers.size();
+            return availableDataBuffers.size();
+        }
+        return Integer.MAX_VALUE;
+    }
+
+    public int availableIndexBufferNums() {
+        if (dLedgerConfig.isTransientStorePoolEnable()) {
+            return availableIndexBuffers.size();
         }
         return Integer.MAX_VALUE;
     }

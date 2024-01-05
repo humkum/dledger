@@ -84,7 +84,7 @@ public class DLedgerMmapFileStore extends DLedgerStore {
         } else {
             this.dataFileList = new MmapFileList(dLedgerConfig.getDataStorePath(), dLedgerConfig.getMappedFileSizeForEntryData(), this);
         }
-        this.indexFileList = new MmapFileList(dLedgerConfig.getIndexStorePath(), dLedgerConfig.getMappedFileSizeForEntryIndex());
+        this.indexFileList = new MmapFileList(dLedgerConfig.getIndexStorePath(), dLedgerConfig.getMappedFileSizeForEntryIndex(), this);
         localEntryBuffer = ThreadLocal.withInitial(() -> ByteBuffer.allocate(4 * 1024 * 1024));
         localIndexBuffer = ThreadLocal.withInitial(() -> ByteBuffer.allocate(INDEX_UNIT_SIZE * 2));
         flushDataService = new FlushDataService("DLedgerFlushDataService", logger);
@@ -703,11 +703,18 @@ public class DLedgerMmapFileStore extends DLedgerStore {
                 }
                 long start = System.currentTimeMillis();
                 boolean result = DLedgerMmapFileStore.this.dataFileList.commit(commitDataLeastPages);
-                long elapsed;
-                if ((elapsed = DLedgerUtils.elapsed(start)) > 500) {
-                    logger.info("commit data cost={} ms", elapsed);
+                long commitDataElapsed;
+                if ((commitDataElapsed = DLedgerUtils.elapsed(start)) > 500) {
+                    logger.info("commit data cost={} ms", commitDataElapsed);
                 }
-                if (!result) {
+                long startCommitIndex = System.currentTimeMillis();
+                boolean commitIndexResult = DLedgerMmapFileStore.this.indexFileList.commit(commitDataLeastPages);
+                long commitIndexElapsed;
+                if ((commitIndexElapsed = DLedgerUtils.elapsed(startCommitIndex)) > 500) {
+                    logger.info("commit index data cost={} ms", commitIndexElapsed);
+                }
+
+                if (!result || !commitIndexResult) {
                     this.lastCommitTimestamp = System.currentTimeMillis(); // result = false means some data committed.
                     //now wake up flush thread.
                     flushDataService.wakeup();
