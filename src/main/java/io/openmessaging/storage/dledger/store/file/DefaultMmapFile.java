@@ -66,7 +66,7 @@ public class DefaultMmapFile extends ReferenceResource implements MmapFile {
     public void init(final String fileName, final int fileSize,
                      final TransientStorePool transientStorePool) throws IOException {
         init(fileName, fileSize);
-        this.writeBuffer = transientStorePool.borrowBuffer();
+        this.writeBuffer = transientStorePool.borrowBuffer(fileSize);
         this.transientStorePool = transientStorePool;
     }
 
