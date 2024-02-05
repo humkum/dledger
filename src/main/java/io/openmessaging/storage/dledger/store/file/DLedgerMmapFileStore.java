@@ -130,6 +130,7 @@ public class DLedgerMmapFileStore extends DLedgerStore {
     public void flush() {
         this.dataFileList.commit(0);
         this.dataFileList.flush(0);
+        this.indexFileList.commit(0);
         this.indexFileList.flush(0);
     }
 
@@ -828,4 +829,9 @@ public class DLedgerMmapFileStore extends DLedgerStore {
     public TransientStorePool getTransientStorePool() {
         return transientStorePool;
     }
+
+    public long getCommittedWhere() {
+        return this.dataFileList.getCommittedWhere();
+    }
+
 }

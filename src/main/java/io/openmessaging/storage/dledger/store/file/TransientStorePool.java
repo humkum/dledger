@@ -85,15 +85,15 @@ public class TransientStorePool {
     public void returnBuffer(ByteBuffer byteBuffer) {
         int capacity = byteBuffer.capacity();
         if (capacity == dataFileSize) {
-            log.info("return a data buffer to transient store, available data buffer number: {}", availableBufferNums());
             byteBuffer.position(0);
             byteBuffer.limit(dataFileSize);
             this.availableDataBuffers.offerFirst(byteBuffer);
+            log.info("return a data buffer to transient store, available data buffer number: {}", availableBufferNums());
         } else if (capacity == indexFileSize) {
-            log.info("return a index buffer to transient store, available index buffer number: {}", availableIndexBufferNums());
             byteBuffer.position(0);
             byteBuffer.limit(indexFileSize);
             this.availableIndexBuffers.offerFirst(byteBuffer);
+            log.info("return a index buffer to transient store, available index buffer number: {}", availableIndexBufferNums());
         }
     }
 

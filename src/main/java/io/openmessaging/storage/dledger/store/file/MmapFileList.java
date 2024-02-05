@@ -115,9 +115,12 @@ public class MmapFileList {
             long fileTailOffset = file.getFileFromOffset() + this.mappedFileSize;
             if (fileTailOffset > offset) {
                 if (offset >= file.getFileFromOffset()) {
-                    file.setWrotePosition((int) (offset % this.mappedFileSize));
-                    file.setCommittedPosition((int) (offset % this.mappedFileSize));
-                    file.setFlushedPosition((int) (offset % this.mappedFileSize));
+                    int relativePosition = (int) (offset % this.mappedFileSize);
+                    int oldCommittedPosition = file.getCommittedPosition();
+                    int oldFlushPosition = file.getFlushedPosition();
+                    file.setWrotePosition(relativePosition);
+                    file.setCommittedPosition(Math.min(relativePosition, oldCommittedPosition));
+                    file.setFlushedPosition(Math.min(relativePosition, oldFlushPosition));
                 } else {
                     willRemoveFiles.add(file);
                 }

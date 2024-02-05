@@ -220,18 +220,23 @@ public class DefaultMmapFile extends ReferenceResource implements MmapFile {
                     //We only append data to fileChannel or mappedByteBuffer, never both.
                     if (writeBuffer != null || this.fileChannel.position() != 0) {
                         this.fileChannel.force(false);
+                        this.flushedPosition.set(getCommittedPosition());
                     } else {
                         this.mappedByteBuffer.force();
+                        this.flushedPosition.set(value);
                     }
                 } catch (Throwable e) {
                     logger.error("Error occurred when force data to disk.", e);
                 }
 
-                this.flushedPosition.set(value);
                 this.release();
             } else {
                 logger.warn("in flush, hold failed, flush offset = " + this.flushedPosition.get());
-                this.flushedPosition.set(getReadPosition());
+                if (writeBuffer != null) {
+                    this.flushedPosition.set(getCommittedPosition());
+                } else {
+                    this.flushedPosition.set(getReadPosition());
+                }
             }
         }
         return this.getFlushedPosition();
@@ -472,6 +477,10 @@ public class DefaultMmapFile extends ReferenceResource implements MmapFile {
     @Override
     public void setCommittedPosition(int pos) {
         this.committedPosition.set(pos);
+    }
+
+    public int getCommittedPosition() {
+        return this.committedPosition.get();
     }
 
     @Override

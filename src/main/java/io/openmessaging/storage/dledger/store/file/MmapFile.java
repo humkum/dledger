@@ -240,6 +240,13 @@ public interface MmapFile {
     void setCommittedPosition(int committedPosition);
 
     /**
+     * get the committed position of this file.
+     *
+     * @return committed position of this file
+     */
+    int getCommittedPosition();
+
+    /**
      * get the data from file channel
      *
      * @param pos
